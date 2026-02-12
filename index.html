@@ -15,35 +15,47 @@
     <nav class="sidebar">
         <div class="logo-details">
             <i class='bx bxs-factory icon'></i>
-            <span class="logo_name">MITRADO INDONESIA</span>
         </div>
         <ul class="nav-list">
             <li><a href="#" onclick="loadPage('dashboard')" id="nav-dashboard" data-tooltip="Dashboard">
-                <i class='bx bx-grid-alt'></i><span class="links_name">Dashboard</span>
+                <i class='bx bx-grid-alt'></i>
             </a></li>
             <li><a href="#" onclick="loadPage('upload')" id="nav-upload" data-tooltip="Upload">
-                <i class='bx bx-cloud-upload'></i><span class="links_name">Upload</span>
+                <i class='bx bx-cloud-upload'></i>
             </a></li>
             <li><a href="#" onclick="loadPage('data')" id="nav-data" data-tooltip="Data & OCR">
-                <i class='bx bx-table'></i><span class="links_name">Data & OCR</span>
+                <i class='bx bx-table'></i>
             </a></li>
-
-            <li class="profile">
-                <div class="profile-details">
-                    <div class="user-avatar" id="userAvatar">A</div>
-                    <div class="name_job">
-                        <div class="name" id="loggedUserEmail">Admin User</div>
-                        <div class="job">Steel Logistics</div>
-                    </div>
-                    <div class="dropdown-content">
-                        <a href="#"><i class='bx bx-user'></i> Profile</a>
-                        <a href="#"><i class='bx bx-lock-alt'></i> Password</a>
-                        <a id="logout" href="#" style="color:red;"><i class='bx bx-log-out'></i> Logout</a>
-                    </div>
-                </div>
-            </li>
         </ul>
+        
+        <div class="profile-section-bottom">
+            <button class="profile-avatar-button" id="profileButton" aria-label="User menu">
+                <div class="user-avatar" id="userAvatar">A</div>
+            </button>
+        </div>
     </nav>
+
+    <!-- Profile Dropdown Menu -->
+    <div class="profile-dropdown" id="profileDropdown">
+        <div class="profile-dropdown-header">
+            <div class="profile-avatar-small" id="dropdownAvatar">A</div>
+            <div class="profile-info">
+                <div class="profile-name" id="dropdownName">Admin User</div>
+                <div class="profile-email" id="dropdownEmail">admin@example.com</div>
+            </div>
+        </div>
+        <div class="profile-dropdown-divider"></div>
+        <a href="#" onclick="loadPage('profile'); closeProfileDropdown();" class="profile-dropdown-item">
+            <i class='bx bx-user'></i> Profile Settings
+        </a>
+        <a href="#" onclick="loadPage('password'); closeProfileDropdown();" class="profile-dropdown-item">
+            <i class='bx bx-lock-alt'></i> Change Password
+        </a>
+        <div class="profile-dropdown-divider"></div>
+        <a id="logout" href="#" class="profile-dropdown-item logout-item">
+            <i class='bx bx-log-out'></i> Logout
+        </a>
+    </div>
 
     <section class="home-section">
         <header id="header-section">
