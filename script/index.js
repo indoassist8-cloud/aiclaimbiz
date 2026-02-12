@@ -55,6 +55,12 @@ window.loadPage = async function (page) {
         if (page === 'dashboard') {
             title.innerText = "Dashboard Overview";
 
+            const user = auth.currentUser;
+            if (!user) {
+                container.innerHTML = `<div class="loader-container"><p>Authenticating...</p></div>`;
+                return;
+            }
+
             const idToken = await auth.currentUser.getIdToken();
             const response = await fetch(`${APPS_SCRIPT_URL}?idToken=${idToken}`);
             const result = await response.json();
@@ -150,6 +156,12 @@ window.loadPage = async function (page) {
 
         else if (page === 'data') {
             title.innerText = "Data & OCR Submissions";
+
+            const user = auth.currentUser;
+            if (!user) {
+                container.innerHTML = `<div class="loader-container"><p>Authenticating...</p></div>`;
+                return;
+            }
 
             const idToken = await auth.currentUser.getIdToken();
             const response = await fetch(`${APPS_SCRIPT_URL}?idToken=${idToken}`);
