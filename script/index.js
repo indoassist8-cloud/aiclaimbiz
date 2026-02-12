@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
-import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-import { getFirestore, getDoc, doc } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+import { getFirestore, getDoc, doc, setDoc, updateDoc } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyDt3AXqpQld8nklTfKwfEPIXf1VudcNqlM",
@@ -20,10 +20,34 @@ let ROWS_PER_PAGE = 10;
 let currentTableData = [];
 let currentPage = 1;
 
+// Global user data
+let currentUserData = {
+    firstName: '',
+    lastName: '',
+    email: ''
+};
+
+// Profile dropdown toggle
+window.closeProfileDropdown = function () {
+    const dropdown = document.getElementById('profileDropdown');
+    if (dropdown) {
+        dropdown.classList.remove('show');
+    }
+};
+
 // Main page loading function
 window.loadPage = async function (page) {
     const container = document.getElementById('main-container');
     const title = document.getElementById('page-title');
+
+    // Update active navigation
+    document.querySelectorAll('.nav-list li a').forEach(link => {
+        link.classList.remove('active');
+    });
+    const activeLink = document.getElementById(`nav-${page}`);
+    if (activeLink) {
+        activeLink.classList.add('active');
+    }
 
     container.innerHTML = `<div class="loader-container"><p>Loading ${page}...</p></div>`;
 
@@ -61,14 +85,14 @@ window.loadPage = async function (page) {
 
                 dataRows.forEach(row => {
                     if (!row || row.length === 0) return;
-                    
+
                     const date = new Date(row[0]);
                     const rawAmount = row[4] || row[2]; // Try column 5 first, then column 3
-                    
+
                     // Clean the amount: Remove commas, currency symbols, and spaces
                     let cleanAmount = String(rawAmount).replace(/[^\d.-]/g, '');
                     const amount = parseFloat(cleanAmount) || 0;
-                    
+
                     if (!isNaN(date.getTime())) {
                         const m = date.getMonth();
                         const y = date.getFullYear();
@@ -126,14 +150,24 @@ window.loadPage = async function (page) {
 
         else if (page === 'data') {
             title.innerText = "Data & OCR Submissions";
-            
+
             const idToken = await auth.currentUser.getIdToken();
             const response = await fetch(`${APPS_SCRIPT_URL}?idToken=${idToken}`);
             const result = await response.json();
 
-            // Use result.data if available, otherwise result
-            const rawData = result.data || result;
-            currentTableData = rawData;
+            let rawData = result.data || result;
+
+            // Filter out empty rows
+            if (Array.isArray(rawData) && rawData.length > 0) {
+                const headers = rawData[0];
+                const dataRows = rawData.slice(1).filter(row => {
+                    return row && row.some(cell => cell !== null && cell !== undefined && cell !== '');
+                });
+                currentTableData = [headers, ...dataRows];
+            } else {
+                currentTableData = rawData;
+            }
+
             currentPage = 1;
             renderPaginatedTable();
         }
@@ -185,62 +219,407 @@ window.loadPage = async function (page) {
                 }
             });
 
-            uploadBtn.onclick = () => handleMultipleUploads(fileInput.files);
+            uploadBtn.addEventListener('click', async () => {
+                const files = fileInput.files;
+                if (files.length > 0) {
+                    await handleMultipleUploads(files);
+                }
+            });
         }
 
-    } catch (err) {
-        console.error('Error in loadPage:', err);
-        console.error('Page:', page);
+        else if (page === 'profile') {
+            title.innerText = "User Profile";
+            await loadProfilePage(container);
+        }
+
+        else if (page === 'password') {
+            title.innerText = "Change Password";
+            await loadPasswordPage(container);
+        }
+
+    } catch (error) {
+        console.error("Error loading page:", error);
         container.innerHTML = `
-            <div style="padding: 30px; text-align: center;">
+            <div style="text-align: center; padding: 40px;">
                 <i class='bx bx-error-circle' style='font-size: 64px; color: var(--brand-red);'></i>
-                <h3 style="margin-top: 20px; color: var(--brand-red);">Error Loading Page</h3>
-                <p style="color: var(--text-secondary); margin-top: 10px;">${err.message}</p>
-                <button class="btn-main" onclick="loadPage('dashboard')" style="margin-top: 20px;">
-                    <i class='bx bx-refresh'></i> Try Again
-                </button>
+                <h3 style="margin-top: 20px; color: var(--brand-red);">Error Loading ${page}</h3>
+                <p style="color: var(--text-secondary); margin-top: 10px;">${error.message}</p>
             </div>
         `;
     }
 };
 
+// Profile Page
+async function loadProfilePage(container) {
+    const user = auth.currentUser;
+    const userDoc = await getDoc(doc(db, "users", user.uid));
+
+    if (userDoc.exists()) {
+        const data = userDoc.data();
+        currentUserData = {
+            firstName: data.firstName || '',
+            lastName: data.lastName || '',
+            email: user.email
+        };
+    } else {
+        currentUserData = {
+            firstName: '',
+            lastName: '',
+            email: user.email
+        };
+    }
+
+    const initials = getUserInitials(currentUserData.email);
+    const displayName = currentUserData.firstName && currentUserData.lastName
+        ? `${currentUserData.firstName} ${currentUserData.lastName}`
+        : currentUserData.email;
+
+    container.innerHTML = `
+        <div class="profile-section">
+            <div class="profile-header">
+                <div class="profile-avatar-large">${initials}</div>
+                <h2>${displayName}</h2>
+                <p>${currentUserData.email}</p>
+            </div>
+            
+            <div class="profile-form">
+                <form id="profileForm">
+                    <div class="form-group">
+                        <label for="firstName">First Name</label>
+                        <input type="text" id="firstName" name="firstName" value="${currentUserData.firstName}" placeholder="Enter your first name">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="lastName">Last Name</label>
+                        <input type="text" id="lastName" name="lastName" value="${currentUserData.lastName}" placeholder="Enter your last name">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" name="email" value="${currentUserData.email}" disabled>
+                    </div>
+                    
+                    <div id="profileMessage"></div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" onclick="loadPage('dashboard')">Cancel</button>
+                        <button type="submit" class="btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    `;
+
+    // Handle form submission
+    document.getElementById('profileForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await saveProfile();
+    });
+}
+
+// Save Profile
+async function saveProfile() {
+    const firstName = document.getElementById('firstName').value.trim();
+    const lastName = document.getElementById('lastName').value.trim();
+    const messageDiv = document.getElementById('profileMessage');
+    const submitBtn = document.querySelector('#profileForm button[type="submit"]');
+
+    if (!firstName || !lastName) {
+        messageDiv.innerHTML = `
+            <div class="alert alert-error">
+                <i class='bx bx-error-circle'></i> Please fill in both first and last name.
+            </div>
+        `;
+        return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="bx bx-loader-alt bx-spin"></i> Saving...';
+
+    try {
+        const user = auth.currentUser;
+        const userRef = doc(db, "users", user.uid);
+
+        // Update Firestore
+        await setDoc(userRef, {
+            firstName: firstName,
+            lastName: lastName,
+            email: user.email,
+            updatedAt: new Date().toISOString()
+        }, { merge: true });
+
+        // Update global user data
+        currentUserData.firstName = firstName;
+        currentUserData.lastName = lastName;
+
+        // Update all user displays
+        updateAllUserDisplays();
+
+        messageDiv.innerHTML = `
+            <div class="alert alert-success">
+                <i class='bx bx-check-circle'></i> Profile updated successfully!
+            </div>
+        `;
+
+        setTimeout(() => {
+            messageDiv.innerHTML = '';
+        }, 3000);
+
+    } catch (error) {
+        console.error("Error saving profile:", error);
+        messageDiv.innerHTML = `
+            <div class="alert alert-error">
+                <i class='bx bx-error-circle'></i> Error saving profile: ${error.message}
+            </div>
+        `;
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Save Changes';
+    }
+}
+
+// Password Page
+async function loadPasswordPage(container) {
+    container.innerHTML = `
+        <div class="password-section">
+            <div class="password-form">
+                <div class="password-requirements">
+                    <h4>Password Requirements:</h4>
+                    <ul>
+                        <li>At least 6 characters long</li>
+                        <li>Mix of letters and numbers recommended</li>
+                        <li>Use a unique password you don't use elsewhere</li>
+                    </ul>
+                </div>
+                
+                <form id="passwordForm">
+                    <div class="form-group">
+                        <label for="currentPassword">Current Password</label>
+                        <input type="password" id="currentPassword" name="currentPassword" placeholder="Enter your current password" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="newPassword">New Password</label>
+                        <input type="password" id="newPassword" name="newPassword" placeholder="Enter your new password" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="confirmPassword">Confirm New Password</label>
+                        <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Confirm your new password" required>
+                    </div>
+                    
+                    <div id="passwordMessage"></div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" onclick="loadPage('dashboard')">Cancel</button>
+                        <button type="submit" class="btn-primary">Update Password</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    `;
+
+    // Handle form submission
+    document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await changePassword();
+    });
+}
+
+// Change Password
+async function changePassword() {
+    const currentPassword = document.getElementById('currentPassword').value;
+    const newPassword = document.getElementById('newPassword').value;
+    const confirmPassword = document.getElementById('confirmPassword').value;
+    const messageDiv = document.getElementById('passwordMessage');
+    const submitBtn = document.querySelector('#passwordForm button[type="submit"]');
+
+    // Validation
+    if (newPassword.length < 6) {
+        messageDiv.innerHTML = `
+            <div class="alert alert-error">
+                <i class='bx bx-error-circle'></i> New password must be at least 6 characters long.
+            </div>
+        `;
+        return;
+    }
+
+    if (newPassword !== confirmPassword) {
+        messageDiv.innerHTML = `
+            <div class="alert alert-error">
+                <i class='bx bx-error-circle'></i> New passwords do not match.
+            </div>
+        `;
+        return;
+    }
+
+    if (currentPassword === newPassword) {
+        messageDiv.innerHTML = `
+            <div class="alert alert-error">
+                <i class='bx bx-error-circle'></i> New password must be different from current password.
+            </div>
+        `;
+        return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="bx bx-loader-alt bx-spin"></i> Updating...';
+
+    try {
+        const user = auth.currentUser;
+        const credential = EmailAuthProvider.credential(user.email, currentPassword);
+
+        // Re-authenticate user
+        await reauthenticateWithCredential(user, credential);
+
+        // Update password
+        await updatePassword(user, newPassword);
+
+        messageDiv.innerHTML = `
+            <div class="alert alert-success">
+                <i class='bx bx-check-circle'></i> Password updated successfully!
+            </div>
+        `;
+
+        // Clear form
+        document.getElementById('passwordForm').reset();
+
+        setTimeout(() => {
+            messageDiv.innerHTML = '';
+        }, 3000);
+
+    } catch (error) {
+        console.error("Error changing password:", error);
+        let errorMessage = "Error updating password. Please try again.";
+
+        if (error.code === 'auth/wrong-password') {
+            errorMessage = "Current password is incorrect.";
+        } else if (error.code === 'auth/weak-password') {
+            errorMessage = "New password is too weak.";
+        } else if (error.code === 'auth/requires-recent-login') {
+            errorMessage = "Please log out and log in again before changing your password.";
+        }
+
+        messageDiv.innerHTML = `
+            <div class="alert alert-error">
+                <i class='bx bx-error-circle'></i> ${errorMessage}
+            </div>
+        `;
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'Update Password';
+    }
+}
+
+// Update all user displays (sidebar, dropdown, etc.)
+function updateAllUserDisplays() {
+    const displayName = currentUserData.firstName && currentUserData.lastName
+        ? `${currentUserData.firstName} ${currentUserData.lastName}`
+        : currentUserData.email;
+
+    // Update dropdown
+    document.getElementById('dropdownName').innerText = displayName;
+    document.getElementById('dropdownEmail').innerText = currentUserData.email;
+
+    // Update avatars with initials
+    const initials = getUserInitials(currentUserData.email);
+    document.getElementById('userAvatar').innerText = initials;
+    document.getElementById('dropdownAvatar').innerText = initials;
+}
+
 // Render paginated table
 function renderPaginatedTable() {
     const container = document.getElementById('main-container');
+
+    if (!currentTableData || currentTableData.length === 0) {
+        container.innerHTML = `
+            <div style="text-align: center; padding: 40px;">
+                <i class='bx bx-data' style='font-size: 64px; color: var(--text-secondary);'></i>
+                <h3 style="margin-top: 20px; color: var(--text-primary);">No Data Available</h3>
+                <p style="color: var(--text-secondary); margin-top: 10px;">Upload some receipts to get started!</p>
+            </div>
+        `;
+        return;
+    }
+
     const headers = currentTableData[0];
-    const rows = currentTableData.slice(1).filter(r => r.join('').trim() !== "");
+    const dataRows = currentTableData.slice(1);
+    const totalPages = Math.ceil(dataRows.length / ROWS_PER_PAGE);
+    const startIdx = (currentPage - 1) * ROWS_PER_PAGE;
+    const endIdx = startIdx + ROWS_PER_PAGE;
+    const pageRows = dataRows.slice(startIdx, endIdx);
 
-    const totalPages = Math.ceil(rows.length / ROWS_PER_PAGE);
-    const start = (currentPage - 1) * ROWS_PER_PAGE;
-    const paginatedRows = rows.slice(start, start + ROWS_PER_PAGE);
+    let tableHTML = `
+        <div class="table-responsive">
+            <table class="ocr-table">
+                <thead>
+                    <tr>
+    `;
 
-    let html = `
-        <div class="table-container">
-            <table class="styled-table">
-                <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+    headers.forEach(h => {
+        tableHTML += `<th>${h}</th>`;
+    });
+
+    tableHTML += `
+                    </tr>
+                </thead>
                 <tbody>
-                    ${paginatedRows.map(row => `<tr>${row.map(cell => `<td>${cell || ''}</td>`).join('')}</tr>`).join('')}
+    `;
+
+    pageRows.forEach(row => {
+        tableHTML += '<tr>';
+        row.forEach((cell, idx) => {
+            if (idx === 0 && cell) {
+                const d = new Date(cell);
+                if (!isNaN(d.getTime())) {
+                    tableHTML += `<td>${d.toLocaleDateString()}</td>`;
+                } else {
+                    tableHTML += `<td>${cell}</td>`;
+                }
+            } else {
+                tableHTML += `<td>${cell || ''}</td>`;
+            }
+        });
+        tableHTML += '</tr>';
+    });
+
+    tableHTML += `
                 </tbody>
             </table>
         </div>
         <div class="pagination-controls">
-            <button onclick="changePage(-1)" ${currentPage === 1 ? 'disabled' : ''}>Prev</button>
+            <button id="prevPage" ${currentPage === 1 ? 'disabled' : ''}>
+                <i class='bx bx-chevron-left'></i> Previous
+            </button>
             <span>Page ${currentPage} of ${totalPages}</span>
-            <button onclick="changePage(1)" ${currentPage === totalPages ? 'disabled' : ''}>Next</button>
-        </div>`;
+            <button id="nextPage" ${currentPage === totalPages ? 'disabled' : ''}>
+                Next <i class='bx bx-chevron-right'></i>
+            </button>
+        </div>
+    `;
 
-    container.innerHTML = html;
+    container.innerHTML = tableHTML;
+
+    document.getElementById('prevPage')?.addEventListener('click', () => {
+        if (currentPage > 1) {
+            currentPage--;
+            renderPaginatedTable();
+        }
+    });
+
+    document.getElementById('nextPage')?.addEventListener('click', () => {
+        if (currentPage < totalPages) {
+            currentPage++;
+            renderPaginatedTable();
+        }
+    });
 }
-
-// Change page for pagination
-window.changePage = (direction) => {
-    currentPage += direction;
-    renderPaginatedTable();
-};
 
 // Render dashboard chart
 function renderDashboardChart(monthlyData) {
-    const ctx = document.getElementById('monthlyChart').getContext('2d');
+    const ctx = document.getElementById('monthlyChart');
+    if (!ctx) return;
+
     new Chart(ctx, {
         type: 'bar',
         data: {
@@ -253,8 +632,8 @@ function renderDashboardChart(monthlyData) {
                 borderSkipped: false
             }]
         },
-        options: { 
-            responsive: true, 
+        options: {
+            responsive: true,
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
             scales: {
@@ -319,7 +698,7 @@ async function handleMultipleUploads(files) {
             </div>
         `;
     }
-    
+
     btn.style.display = 'none';
     preview.innerHTML = '';
     document.getElementById('fileInput').value = '';
@@ -355,25 +734,31 @@ async function uploadSingleFile(file, user) {
 }
 
 // Auth state observer
-onAuthStateChanged(auth, (user) => {
+onAuthStateChanged(auth, async (user) => {
     if (user) {
         const docRef = doc(db, "users", user.uid);
-        getDoc(docRef).then((docSnap) => {
-            let userEmail = user.email;
-            if (docSnap.exists()) {
-                userEmail = docSnap.data().email || user.email;
-            }
-            
-            // Update email display
-            document.getElementById('loggedUserEmail').innerText = userEmail;
-            
-            // Generate and set user initials
-            const initials = getUserInitials(userEmail);
-            document.getElementById('userAvatar').innerText = initials;
-            
-            // Load dashboard by default
-            window.loadPage('dashboard');
-        });
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+            const data = docSnap.data();
+            currentUserData = {
+                firstName: data.firstName || '',
+                lastName: data.lastName || '',
+                email: user.email
+            };
+        } else {
+            currentUserData = {
+                firstName: '',
+                lastName: '',
+                email: user.email
+            };
+        }
+
+        // Update all user displays
+        updateAllUserDisplays();
+
+        // Load dashboard by default
+        window.loadPage('dashboard');
     } else {
         window.location.href = 'login.html';
     }
@@ -382,13 +767,18 @@ onAuthStateChanged(auth, (user) => {
 // Helper function to get user initials from email
 function getUserInitials(email) {
     if (!email) return 'U';
-    
+
+    // If we have first and last name, use those
+    if (currentUserData.firstName && currentUserData.lastName) {
+        return (currentUserData.firstName[0] + currentUserData.lastName[0]).toUpperCase();
+    }
+
     // Extract name part before @
     const namePart = email.split('@')[0];
-    
+
     // Split by dots, underscores, or hyphens
     const nameParts = namePart.split(/[._-]/);
-    
+
     if (nameParts.length >= 2) {
         // If we have multiple parts, use first letter of first two parts
         return (nameParts[0][0] + nameParts[1][0]).toUpperCase();
@@ -402,12 +792,29 @@ function getUserInitials(email) {
 document.addEventListener("DOMContentLoaded", () => {
     const sidebar = document.querySelector(".sidebar");
     const sidebarBtn = document.querySelector("#sidebarBtn");
+    const profileButton = document.getElementById("profileButton");
+    const profileDropdown = document.getElementById("profileDropdown");
 
     if (sidebarBtn) {
         sidebarBtn.addEventListener("click", () => {
             sidebar.classList.toggle("active");
         });
     }
+
+    // Profile dropdown toggle
+    if (profileButton) {
+        profileButton.addEventListener("click", (e) => {
+            e.stopPropagation();
+            profileDropdown.classList.toggle("show");
+        });
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener("click", (e) => {
+        if (profileDropdown && !profileDropdown.contains(e.target) && !profileButton.contains(e.target)) {
+            profileDropdown.classList.remove("show");
+        }
+    });
 
     // Close sidebar automatically when a link is clicked (Mobile only)
     const navLinks = document.querySelectorAll(".nav-list li a");
@@ -423,5 +830,43 @@ document.addEventListener("DOMContentLoaded", () => {
 // Logout functionality
 document.getElementById('logout').addEventListener('click', (e) => {
     e.preventDefault();
+    closeProfileDropdown();
     signOut(auth);
 });
+
+
+
+// Add this at the end of your index.js
+function updateTooltipPositions() {
+    const navLinks = document.querySelectorAll('.nav-list li a[data-tooltip]');
+
+    navLinks.forEach(link => {
+        link.addEventListener('mouseenter', function () {
+            const rect = this.getBoundingClientRect();
+            const tooltipY = rect.top + (rect.height / 2);
+
+            this.style.setProperty('--tooltip-top', `${tooltipY}px`);
+
+            const style = document.createElement('style');
+            style.innerHTML = `
+                .nav-list li a[data-tooltip="${this.getAttribute('data-tooltip')}"]:hover::after {
+                    top: ${tooltipY}px !important;
+                    transform: translateY(-50%) translateX(0) !important;
+                }
+                .nav-list li a[data-tooltip="${this.getAttribute('data-tooltip')}"]:hover::before {
+                    top: ${tooltipY}px !important;
+                    transform: translateY(-50%) !important;
+                }
+            `;
+
+            const oldStyle = document.getElementById('tooltip-style-' + this.id);
+            if (oldStyle) oldStyle.remove();
+
+            style.id = 'tooltip-style-' + this.id;
+            document.head.appendChild(style);
+        });
+    });
+}
+
+document.addEventListener('DOMContentLoaded', updateTooltipPositions);
+window.addEventListener('resize', updateTooltipPositions);
