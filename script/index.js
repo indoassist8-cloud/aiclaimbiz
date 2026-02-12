@@ -61,96 +61,99 @@ window.loadPage = async function (page) {
                 return;
             }
 
-            const idToken = await auth.currentUser.getIdToken();
-            const response = await fetch(`${APPS_SCRIPT_URL}?idToken=${idToken}`);
-            const result = await response.json();
+            try {
+                const idToken = await auth.currentUser.getIdToken();
+                const response = await fetch(`${APPS_SCRIPT_URL}?idToken=${idToken}`);
 
-            // Handle different response formats
-            let rawData;
-            if (result.status === "success" && result.data) {
-                rawData = result.data;
-            } else if (Array.isArray(result)) {
-                rawData = result;
-            } else if (result.data) {
-                rawData = result.data;
-            } else {
-                throw new Error("Invalid data format received");
-            }
+                // Check if response is ok
+                if (!response.ok) {
+                    throw new Error('Failed to fetch data');
+                }
 
-            if (rawData && rawData.length > 0) {
-                const dataRows = rawData.slice(1); // Remove header row
-                const userEmail = auth.currentUser.email;
-                const now = new Date();
-                const currentMonth = now.getMonth();
-                const currentYear = now.getFullYear();
+                const result = await response.json();
 
-                // Calculate Monthly Stats (for all data, not filtered by user)
-                let monthCount = 0;
-                let monthTotal = 0;
-                const monthlyTotals = {}; // For the chart
+                // Handle different response formats
+                let rawData = null;
+                if (result.status === "success" && result.data) {
+                    rawData = result.data;
+                } else if (Array.isArray(result)) {
+                    rawData = result;
+                } else if (result.data) {
+                    rawData = result.data;
+                }
 
-                dataRows.forEach(row => {
-                    if (!row || row.length === 0) return;
+                // Check if we have valid data with more than just headers
+                if (rawData && Array.isArray(rawData) && rawData.length > 1) {
+                    const dataRows = rawData.slice(1); // Remove header row
+                    const userEmail = auth.currentUser.email;
+                    const now = new Date();
+                    const currentMonth = now.getMonth();
+                    const currentYear = now.getFullYear();
 
-                    const date = new Date(row[0]);
-                    const rawAmount = row[4] || row[2]; // Try column 5 first, then column 3
+                    // Calculate Monthly Stats (for all data, not filtered by user)
+                    let monthCount = 0;
+                    let monthTotal = 0;
+                    const monthlyTotals = {}; // For the chart
 
-                    // Clean the amount: Remove commas, currency symbols, and spaces
-                    let cleanAmount = String(rawAmount).replace(/[^\d.-]/g, '');
-                    const amount = parseFloat(cleanAmount) || 0;
+                    dataRows.forEach(row => {
+                        if (!row || row.length === 0) return;
 
-                    if (!isNaN(date.getTime())) {
-                        const m = date.getMonth();
-                        const y = date.getFullYear();
+                        const date = new Date(row[0]);
+                        const rawAmount = row[4] || row[2]; // Try column 5 first, then column 3
 
-                        // Stats for current month
-                        if (m === currentMonth && y === currentYear) {
-                            monthCount++;
-                            monthTotal += amount;
+                        // Clean the amount: Remove commas, currency symbols, and spaces
+                        let cleanAmount = String(rawAmount).replace(/[^\d.-]/g, '');
+                        const amount = parseFloat(cleanAmount) || 0;
+
+                        if (!isNaN(date.getTime())) {
+                            const m = date.getMonth();
+                            const y = date.getFullYear();
+
+                            // Stats for current month
+                            if (m === currentMonth && y === currentYear) {
+                                monthCount++;
+                                monthTotal += amount;
+                            }
+
+                            // Data for Bar Chart
+                            const monthKey = date.toLocaleString('default', { month: 'short' });
+                            monthlyTotals[monthKey] = (monthlyTotals[monthKey] || 0) + amount;
                         }
+                    });
 
-                        // Data for Bar Chart
-                        const monthKey = date.toLocaleString('default', { month: 'short' });
-                        monthlyTotals[monthKey] = (monthlyTotals[monthKey] || 0) + amount;
-                    }
-                });
-
-                container.innerHTML = `
-                    <div class="dashboard-grid">
-                        <div class="stat-card">
-                            <div class="card-icon blue"><i class='bx bx-receipt'></i></div>
-                            <div class="card-info">
-                                <p>Receipts (This Month)</p>
-                                <h3>${monthCount}</h3>
+                    container.innerHTML = `
+                        <div class="dashboard-grid">
+                            <div class="stat-card">
+                                <div class="card-icon blue"><i class='bx bx-receipt'></i></div>
+                                <div class="card-info">
+                                    <p>Receipts (This Month)</p>
+                                    <h3>${monthCount}</h3>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="card-icon green"><i class='bx bx-money'></i></div>
+                                <div class="card-info">
+                                    <p>Total Amount (This Month)</p>
+                                    <h3>${monthTotal.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</h3>
+                                </div>
                             </div>
                         </div>
-                        <div class="stat-card">
-                            <div class="card-icon green"><i class='bx bx-money'></i></div>
-                            <div class="card-info">
-                                <p>Total Amount (This Month)</p>
-                                <h3>${monthTotal.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</h3>
-                            </div>
+
+                        <div class="chart-container-wrapper">
+                            <canvas id="monthlyChart"></canvas>
                         </div>
-                    </div>
+                    `;
 
-                    <div class="chart-container-wrapper">
-                        <canvas id="monthlyChart"></canvas>
-                    </div>
-                `;
-
-                // Render Chart
-                renderDashboardChart(monthlyTotals);
-            } else {
-                container.innerHTML = `
-                    <div style="text-align: center; padding: 40px;">
-                        <i class='bx bx-data' style='font-size: 64px; color: var(--text-secondary);'></i>
-                        <h3 style="margin-top: 20px; color: var(--text-primary);">No Data Available</h3>
-                        <p style="color: var(--text-secondary); margin-top: 10px;">Upload some receipts to get started!</p>
-                        <button class="btn-main" onclick="loadPage('upload')" style="margin-top: 20px;">
-                            <i class='bx bx-upload'></i> Upload Receipt
-                        </button>
-                    </div>
-                `;
+                    // Render Chart
+                    renderDashboardChart(monthlyTotals);
+                } else {
+                    // Show empty state for new users
+                    showEmptyDashboard(container);
+                }
+            } catch (fetchError) {
+                console.log("Data fetch error:", fetchError);
+                // Show empty state if fetch fails (likely new user with no sheet)
+                showEmptyDashboard(container);
             }
         }
 
@@ -163,21 +166,31 @@ window.loadPage = async function (page) {
                 return;
             }
 
-            const idToken = await auth.currentUser.getIdToken();
-            const response = await fetch(`${APPS_SCRIPT_URL}?idToken=${idToken}`);
-            const result = await response.json();
+            try {
+                const idToken = await auth.currentUser.getIdToken();
+                const response = await fetch(`${APPS_SCRIPT_URL}?idToken=${idToken}`);
 
-            let rawData = result.data || result;
+                if (!response.ok) {
+                    throw new Error('Failed to fetch data');
+                }
 
-            // Filter out empty rows
-            if (Array.isArray(rawData) && rawData.length > 0) {
-                const headers = rawData[0];
-                const dataRows = rawData.slice(1).filter(row => {
-                    return row && row.some(cell => cell !== null && cell !== undefined && cell !== '');
-                });
-                currentTableData = [headers, ...dataRows];
-            } else {
-                currentTableData = rawData;
+                const result = await response.json();
+                let rawData = result.data || result;
+
+                // Filter out empty rows
+                if (Array.isArray(rawData) && rawData.length > 0) {
+                    const headers = rawData[0];
+                    const dataRows = rawData.slice(1).filter(row => {
+                        return row && row.some(cell => cell !== null && cell !== undefined && cell !== '');
+                    });
+                    currentTableData = [headers, ...dataRows];
+                } else {
+                    currentTableData = [];
+                }
+            } catch (fetchError) {
+                console.log("Data fetch error:", fetchError);
+                // Set empty table data for new users
+                currentTableData = [];
             }
 
             currentPage = 1;
@@ -627,18 +640,65 @@ function renderPaginatedTable() {
     });
 }
 
+// Show empty dashboard state
+function showEmptyDashboard(container) {
+    container.innerHTML = `
+        <div class="dashboard-grid">
+            <div class="stat-card">
+                <div class="card-icon blue"><i class='bx bx-receipt'></i></div>
+                <div class="card-info">
+                    <p>Receipts (This Month)</p>
+                    <h3>0</h3>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="card-icon green"><i class='bx bx-money'></i></div>
+                <div class="card-info">
+                    <p>Total Amount (This Month)</p>
+                    <h3>0</h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="chart-container-wrapper">
+            <canvas id="monthlyChart"></canvas>
+        </div>
+        
+        <div style="text-align: center; padding: 40px; margin-top: 20px; background: white; border-radius: 16px; border: 1px solid var(--border-color);">
+            <i class='bx bx-data' style='font-size: 64px; color: var(--text-secondary);'></i>
+            <h3 style="margin-top: 20px; color: var(--text-primary);">Welcome! No Data Yet</h3>
+            <p style="color: var(--text-secondary); margin-top: 10px;">Upload some receipts to get started and see your analytics here!</p>
+            <button class="btn-main" onclick="loadPage('upload')" style="margin-top: 20px;">
+                <i class='bx bx-upload'></i> Upload Your First Receipt
+            </button>
+        </div>
+    `;
+
+    // Render empty chart
+    renderDashboardChart({});
+}
+
 // Render dashboard chart
 function renderDashboardChart(monthlyData) {
     const ctx = document.getElementById('monthlyChart');
     if (!ctx) return;
 
+    // If no data, show empty chart with placeholder
+    const labels = Object.keys(monthlyData).length > 0
+        ? Object.keys(monthlyData)
+        : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    const data = Object.keys(monthlyData).length > 0
+        ? Object.values(monthlyData)
+        : new Array(12).fill(0);
+
     new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: Object.keys(monthlyData),
+            labels: labels,
             datasets: [{
                 label: 'Monthly Amount',
-                data: Object.values(monthlyData),
+                data: data,
                 backgroundColor: '#140a6d',
                 borderRadius: 8,
                 borderSkipped: false
