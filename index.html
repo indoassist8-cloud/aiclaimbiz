@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MITRADO INDONESIA APP</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+    <nav class="sidebar">
+        <div class="logo-details">
+            <i class='bx bxs-factory icon'></i>
+            <span class="logo_name">MITRADO INDONESIA</span>
+        </div>
+        <ul class="nav-list">
+            <li><a href="#" onclick="loadPage('dashboard')" id="nav-dashboard" data-tooltip="Dashboard">
+                <i class='bx bx-grid-alt'></i><span class="links_name">Dashboard</span>
+            </a></li>
+            <li><a href="#" onclick="loadPage('upload')" id="nav-upload" data-tooltip="Upload">
+                <i class='bx bx-cloud-upload'></i><span class="links_name">Upload</span>
+            </a></li>
+            <li><a href="#" onclick="loadPage('data')" id="nav-data" data-tooltip="Data & OCR">
+                <i class='bx bx-table'></i><span class="links_name">Data & OCR</span>
+            </a></li>
+
+            <li class="profile">
+                <div class="profile-details">
+                    <div class="user-avatar" id="userAvatar">A</div>
+                    <div class="name_job">
+                        <div class="name" id="loggedUserEmail">Admin User</div>
+                        <div class="job">Steel Logistics</div>
+                    </div>
+                    <div class="dropdown-content">
+                        <a href="#"><i class='bx bx-user'></i> Profile</a>
+                        <a href="#"><i class='bx bx-lock-alt'></i> Password</a>
+                        <a id="logout" href="#" style="color:red;"><i class='bx bx-log-out'></i> Logout</a>
+                    </div>
+                </div>
+            </li>
+        </ul>
+    </nav>
+
+    <section class="home-section">
+        <header id="header-section">
+            <div class="header-left">
+                <i class='bx bx-menu' id="sidebarBtn"></i>
+                <h1 id="page-title">Dashboard</h1>
+            </div>
+        </header>
+        <div id="main-container">
+            <p>Loading...</p>
+        </div>
+    </section>
+
+    <script type="module" src="script/index.js"></script>
+    <script src="script/dashboard.js"></script>
+
+</body>
+
+</html>

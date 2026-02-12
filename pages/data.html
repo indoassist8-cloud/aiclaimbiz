@@ -1,0 +1,36 @@
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h2>OCR Extraction Results</h2>
+        <button class="btn-primary" onclick="window.print()" style="padding: 8px 15px; font-size: 12px;">
+            <i class='bx bx-printer'></i> Export PDF
+        </button>
+    </div>
+
+    <div class="table-responsive" id="OCRDataLoad">
+        <table class="ocr-table">
+            <thead>
+                <tr>
+                    <th>Date </th>
+                    <th>Vendor</th>
+                    <th align="center">Total Amount</th>
+                    <th>Download File</th>
+
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>03 Feb 2026</td>
+                    <td><span class="plate-no">SHELL INDONESIA</span></td>
+                    <td><strong>IDR 250,000</strong></td>
+                    <td><span class="status-pill">DOWNLOAD</span></td>
+                </tr>
+                <tr>
+                    <td>03 Feb 2026</td>
+                    <td><span class="plate-no">STARBUCKS</span></td>
+                    <td><strong>IDR 80,000</strong></td>
+                    <td><span class="status-pill">DOWNLOAD</span></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
