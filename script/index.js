@@ -15,6 +15,7 @@ const db = getFirestore(app);
 
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzs1pK8huTL1frdHBYA-xfM8ckaKBI1bY1y1CigSlwJXNjp_1Pw7spvqvbxnBDjFJc6/exec";
 
+
 // Global variables for pagination
 let ROWS_PER_PAGE = 10;
 let currentTableData = [];
@@ -600,6 +601,17 @@ function renderPaginatedTable() {
                     tableHTML += `<td>${d.toLocaleDateString()}</td>`;
                 } else {
                     tableHTML += `<td>${cell}</td>`;
+                }
+            } else if (cell && typeof cell === 'string' && cell.includes('drive.google.com')) {
+                // Extract file ID from Google Drive URL
+                const fileIdMatch = cell.match(/[?&]id=([^&]+)/);
+                if (fileIdMatch) {
+                    const fileId = fileIdMatch[1];
+                    const thumbnailUrl = `https://drive.google.com/thumbnail?id=${fileId}`;
+                    const viewUrl = `https://drive.google.com/file/d/${fileId}/view`;
+                    tableHTML += `<td style="text-align: center;"><a href="${viewUrl}" target="_blank" rel="noopener noreferrer"><img src="${thumbnailUrl}" alt="Image" style="width: 24px; height: 24px; object-fit: cover; border-radius: 4px; cursor: pointer; vertical-align: middle;" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2224%22 height=%2224%22 viewBox=%220 0 24 24%22><text x=%2212%22 y=%2216%22 text-anchor=%22middle%22 font-size=%2214%22 fill=%22%23999%22>📄</text></svg>'"></a></td>`;
+                } else {
+                    tableHTML += `<td>${cell || ''}</td>`;
                 }
             } else {
                 tableHTML += `<td>${cell || ''}</td>`;
